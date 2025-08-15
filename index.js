@@ -161,7 +161,7 @@ async function sendDailyBacklogReport() {
       for (const card of cards) {
         const { completed, total } = await getChecklistProgress(card.id);
         if (total > 0) {
-          card.name = `${card.name} (${completed}/${total})`;
+          card.name = `**${card.name} (${completed}/${total})**`;
         }
       }
 
