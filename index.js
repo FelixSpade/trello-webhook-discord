@@ -4,7 +4,7 @@ import cron from "node-cron";
 
 dotenv.config();
 
-const { DISCORD_WEBHOOK_URL, TRELLO_KEY, TRELLO_TOKEN, TRELLO_BOARD_ID } =
+const { DISCORD_WEBHOOK_URL, TRELLO_KEY, TRELLO_TOKEN, TRELLO_BOARD_ID, USER_ID } =
   process.env;
 
 const TZ = "Asia/Jakarta";
@@ -48,6 +48,23 @@ async function fetchTrelloCards(listId) {
     return [];
   }
   return data; // [{id, name, shortUrl, due}, ...]
+}
+
+async function fetchTrelloChecklists(cardId) {
+  try {
+    const url = `https://api.trello.com/1/cards/${cardId}/checklists?key=${TRELLO_KEY}&token=${TRELLO_TOKEN}`;
+    const res = await fetch(url);
+
+    if (!res.ok) {
+      throw new Error(`Trello API error ${res.status}: ${await res.text()}`);
+    }
+
+    const checklists = await res.json();
+    return checklists;
+  } catch (err) {
+    console.error(`❌ Error fetching checklists for card ${cardId}:`, err);
+    return [];
+  }
 }
 
 /** Post to Discord webhook (one message) */
@@ -99,6 +116,21 @@ function buildEmbedsForList(listName, cards) {
   }));
 }
 
+// Helper: Count incomplete/total checklist items
+async function getChecklistProgress(cardId) {
+  const checklists = await fetchTrelloChecklists(cardId);
+  let total = 0;
+  let completed = 0;
+
+  for (const cl of checklists) {
+    for (const item of cl.checkItems) {
+      total++;
+      if (item.state === "complete") completed++;
+    }
+  }
+  return { completed, total };
+}
+
 /** Main job: send all cards from lists whose name contains "backlog" */
 async function sendDailyBacklogReport() {
   try {
@@ -124,12 +156,22 @@ async function sendDailyBacklogReport() {
     for (const list of backlogLists) {
       const cards = await fetchTrelloCards(list.id);
       if (cards.length === 0) continue;
+
+      // Add checklist counts to card name
+      for (const card of cards) {
+        const { completed, total } = await getChecklistProgress(card.id);
+        if (total > 0) {
+          card.name = `${card.name} (${completed}/${total})`;
+        }
+      }
+
       allEmbeds.push(...buildEmbedsForList(list.name, cards));
     }
 
     if (allEmbeds.length === 0) {
       await sendToDiscord({
-        content: "📋 **Daily Backlog Report**\n_No work today, feel free to found something. More research._",
+        content:
+          "📋 **Daily Backlog Report**\n_No work today, feel free to found something. More research._",
       });
       console.log(
         `[${new Date().toLocaleString("en-US", {
@@ -143,7 +185,10 @@ async function sendDailyBacklogReport() {
     for (let i = 0; i < allEmbeds.length; i += 10) {
       const chunk = allEmbeds.slice(i, i + 10);
       await sendToDiscord({
-        content: i === 0 ? "📋 **Back to work, my little guinea pig.**" : undefined,
+        content:
+          i === 0
+            ? `<@${USER_ID}> 📋 **Back to work, my little guinea pig.**`
+            : undefined,
         embeds: chunk,
       });
     }
