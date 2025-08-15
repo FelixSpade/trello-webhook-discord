@@ -158,9 +158,9 @@ async function sendDailyBacklogReport() {
   }
 }
 
-/** Schedule at 05:47 Asia/Jakarta daily */
+/** Schedule at 12:49 Asia/Jakarta daily */
 cron.schedule(
-  "47 5 * * *",
+  "49 12 * * *",
   () => {
     console.log(
       `⏰ Running daily backlog report at ${new Date().toLocaleString("en-US", {
